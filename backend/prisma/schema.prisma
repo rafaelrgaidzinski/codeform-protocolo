@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StatusPedido {
+  PROTOCOLADO
+  EM_ANALISE
+  EM_EXIGENCIA
+  CONCLUIDO
+  CANCELADO
+}
+
+enum Prioridade {
+  BAIXA
+  NORMAL
+  ALTA
+  URGENTE
+}
+
+model TipoPedido {
+  id        Int      @id @default(autoincrement())
+  codigo    String   @unique
+  nome      String   @unique
+  descricao String?
+  pedidos   Pedido[]
+
+  @@map("tipos_pedido")
+}
+
+model Pedido {
+  id                   String                  @id @default(uuid())
+  ano                  Int
+  sequencial           Int
+  numeroProtocolo      String                  @unique @map("numero_protocolo")
+  tipoId               Int                     @map("tipo_id")
+  tipo                 TipoPedido              @relation(fields: [tipoId], references: [id])
+  solicitanteNome      String                  @map("solicitante_nome")
+  solicitanteDocumento String?                 @map("solicitante_documento")
+  descricao            String
+  prioridade           Prioridade              @default(NORMAL)
+  status               StatusPedido            @default(PROTOCOLADO)
+  criadoEm             DateTime                @default(now()) @map("criado_em")
+  atualizadoEm         DateTime                @updatedAt @map("atualizado_em")
+  historico            HistoricoMovimentacao[]
+
+  @@unique([ano, sequencial])
+  @@index([status])
+  @@index([tipoId])
+  @@map("pedidos")
+}
+
+model HistoricoMovimentacao {
+  id            String        @id @default(uuid())
+  pedidoId      String        @map("pedido_id")
+  pedido        Pedido        @relation(fields: [pedidoId], references: [id])
+  statusOrigem  StatusPedido? @map("status_origem")
+  statusDestino StatusPedido  @map("status_destino")
+  observacao    String?
+  criadoEm      DateTime      @default(now()) @map("criado_em")
+
+  @@index([pedidoId])
+  @@map("historico_movimentacoes")
+}
+
+model ContadorProtocolo {
+  ano    Int @id
+  ultimo Int
+
+  @@map("contador_protocolo")
+}
