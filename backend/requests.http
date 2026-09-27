@@ -1,6 +1,7 @@
 @baseUrl = http://localhost:3333
 
 ### Criar pedido válido (responde 201 com o pedido criado)
+# @name criarPedido
 POST {{baseUrl}}/pedidos
 Content-Type: application/json
 
@@ -32,6 +33,47 @@ Content-Type: application/json
   "tipoId": 9999,
   "solicitanteNome": "Maria Souza",
   "descricao": "Tipo que não existe"
+}
+
+### Transição 1: mover o pedido criado acima para EM_ANALISE (responde 200)
+POST {{baseUrl}}/pedidos/{{criarPedido.response.body.id}}/transicoes
+Content-Type: application/json
+
+{
+  "para": "EM_ANALISE"
+}
+
+### Transição 2: colocar em exigência com observação (responde 200)
+POST {{baseUrl}}/pedidos/{{criarPedido.response.body.id}}/transicoes
+Content-Type: application/json
+
+{
+  "para": "EM_EXIGENCIA",
+  "observacao": "Falta cópia do RG"
+}
+
+### Transição 3: tentar concluir direto da exigência (deve responder 422)
+POST {{baseUrl}}/pedidos/{{criarPedido.response.body.id}}/transicoes
+Content-Type: application/json
+
+{
+  "para": "CONCLUIDO"
+}
+
+### Transição com status que não existe (deve responder 400)
+POST {{baseUrl}}/pedidos/{{criarPedido.response.body.id}}/transicoes
+Content-Type: application/json
+
+{
+  "para": "ARQUIVADO"
+}
+
+### Transição em pedido inexistente (deve responder 404)
+POST {{baseUrl}}/pedidos/3f2b8c1e-9d4a-4e7b-8a1c-2b3d4e5f6a7b/transicoes
+Content-Type: application/json
+
+{
+  "para": "EM_ANALISE"
 }
 
 ### Listar com filtros (por enquanto responde 501)

@@ -1,10 +1,17 @@
 import {
+    ConflictException,
     Injectable,
+    NotFoundException,
     NotImplementedException,
     UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, StatusPedido } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+    TransicaoInvalidaError,
+    transicoesPermitidas,
+    validarTransicao,
+} from './dominio/maquina-estados';
 import { anoAtualBrasil, formatarNumeroProtocolo } from './dominio/protocolo';
 import { CriarPedidoDto } from './dto/criar-pedido.dto';
 import { ListarPedidosQueryDto } from './dto/listar-pedidos.query';
@@ -47,6 +54,55 @@ export class PedidosService {
         );
     }
 
+    async transicionar(id: string, dto: TransicionarPedidoDto) {
+        return this.prisma.$transaction(async (tx) => {
+            const pedido = await tx.pedido.findUnique({
+                where: { id },
+                select: { status: true },
+            });
+            if (!pedido) {
+                throw new NotFoundException(`Pedido ${id} não encontrado`);
+            }
+
+            this.garantirTransicaoValida(pedido.status, dto.para);
+
+            const { count } = await tx.pedido.updateMany({
+                where: { id, status: pedido.status },
+                data: { status: dto.para },
+            });
+            if (count === 0) {
+                throw new ConflictException(
+                    'O pedido foi alterado por outra operação ao mesmo tempo. Recarregue e tente novamente.',
+                );
+            }
+
+            await tx.historicoMovimentacao.create({
+                data: {
+                    pedidoId: id,
+                    statusOrigem: pedido.status,
+                    statusDestino: dto.para,
+                    observacao: dto.observacao,
+                },
+            });
+
+            return tx.pedido.findUniqueOrThrow({
+                where: { id },
+                include: {
+                    tipo: true,
+                    historico: { orderBy: { criadoEm: 'asc' } },
+                },
+            });
+        });
+    }
+
+    listar(query: ListarPedidosQueryDto) {
+        throw new NotImplementedException('Implementado na etapa 5');
+    }
+
+    buscarPorId(id: string) {
+        throw new NotImplementedException('Implementado na etapa 6');
+    }
+
     /**
      * Incrementa o contador do ano de forma atômica e devolve o novo valor.
      *
@@ -64,15 +120,24 @@ export class PedidosService {
         return contador.ultimo;
     }
 
-    listar(query: ListarPedidosQueryDto) {
-        throw new NotImplementedException('Implementado na etapa 5');
-    }
-
-    buscarPorId(id: string) {
-        throw new NotImplementedException('Implementado na etapa 6');
-    }
-
-    transicionar(id: string, dto: TransicionarPedidoDto) {
-        throw new NotImplementedException('Implementado na etapa 4');
+    /**
+     * Traduz a regra do domínio para a linguagem HTTP.
+     * A máquina de estados não conhece HTTP; é aqui que o erro dela vira um 422.
+     */
+    private garantirTransicaoValida(de: StatusPedido, para: StatusPedido): void {
+        try {
+            validarTransicao(de, para);
+        } catch (erro) {
+            if (erro instanceof TransicaoInvalidaError) {
+                throw new UnprocessableEntityException({
+                    statusCode: 422,
+                    error: 'Unprocessable Entity',
+                    message: erro.message,
+                    statusAtual: de,
+                    transicoesPermitidas: transicoesPermitidas(de),
+                });
+            }
+            throw erro;
+        }
     }
 }
