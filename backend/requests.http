@@ -1,0 +1,44 @@
+@baseUrl = http://localhost:3333
+
+### Criar pedido válido (responde 201 com o pedido criado)
+POST {{baseUrl}}/pedidos
+Content-Type: application/json
+
+{
+  "tipoId": 1,
+  "solicitanteNome": "Maria Souza",
+  "solicitanteDocumento": "12345678901",
+  "descricao": "Segunda via da certidão de nascimento",
+  "prioridade": "NORMAL"
+}
+
+### Criar pedido inválido (deve responder 400 com a lista de erros)
+POST {{baseUrl}}/pedidos
+Content-Type: application/json
+
+{
+  "tipoId": "abc",
+  "solicitanteNome": "",
+  "descricao": "",
+  "prioridade": "SUPER_URGENTE",
+  "status": "CONCLUIDO"
+}
+
+### Criar pedido com tipo inexistente (deve responder 422)
+POST {{baseUrl}}/pedidos
+Content-Type: application/json
+
+{
+  "tipoId": 9999,
+  "solicitanteNome": "Maria Souza",
+  "descricao": "Tipo que não existe"
+}
+
+### Listar com filtros (por enquanto responde 501)
+GET {{baseUrl}}/pedidos?status=PROTOCOLADO&pagina=1
+
+### Listar com filtro inválido (deve responder 400)
+GET {{baseUrl}}/pedidos?status=QUALQUER_COISA
+
+### Detalhe com id inválido (deve responder 400)
+GET {{baseUrl}}/pedidos/nao-e-um-uuid
