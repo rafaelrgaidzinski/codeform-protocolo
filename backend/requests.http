@@ -102,3 +102,6 @@ GET {{baseUrl}}/pedidos?porPagina=500
 
 ### Tipos de pedido, para o formulário e o filtro (responde 200)
 GET {{baseUrl}}/tipos-pedido
+
+### Health check (responde 200 com o banco no ar)
+GET {{baseUrl}}/health
