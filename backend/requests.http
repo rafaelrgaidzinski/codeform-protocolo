@@ -76,11 +76,29 @@ Content-Type: application/json
   "para": "EM_ANALISE"
 }
 
-### Listar com filtros (por enquanto responde 501)
-GET {{baseUrl}}/pedidos?status=PROTOCOLADO&pagina=1
+### Detalhe do pedido criado acima, com histórico e transições permitidas (responde 200)
+GET {{baseUrl}}/pedidos/{{criarPedido.response.body.id}}
+
+### Detalhe de pedido inexistente (deve responder 404)
+GET {{baseUrl}}/pedidos/3f2b8c1e-9d4a-4e7b-8a1c-2b3d4e5f6a7b
+
+### Detalhe com id inválido (deve responder 400)
+GET {{baseUrl}}/pedidos/nao-e-um-uuid
+
+### Listar todos, página 1 (responde 200)
+GET {{baseUrl}}/pedidos
+
+### Listar com filtro de status e paginação (responde 200)
+GET {{baseUrl}}/pedidos?status=EM_EXIGENCIA&pagina=1&porPagina=5
+
+### Busca textual por nome do solicitante (responde 200)
+GET {{baseUrl}}/pedidos?busca=maria
 
 ### Listar com filtro inválido (deve responder 400)
 GET {{baseUrl}}/pedidos?status=QUALQUER_COISA
 
-### Detalhe com id inválido (deve responder 400)
-GET {{baseUrl}}/pedidos/nao-e-um-uuid
+### Listar com porPagina acima do limite (deve responder 400)
+GET {{baseUrl}}/pedidos?porPagina=500
+
+### Tipos de pedido, para o formulário e o filtro (responde 200)
+GET {{baseUrl}}/tipos-pedido

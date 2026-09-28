@@ -2,7 +2,6 @@ import {
     ConflictException,
     Injectable,
     NotFoundException,
-    NotImplementedException,
     UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, StatusPedido } from '@prisma/client';
@@ -17,6 +16,12 @@ import { CriarPedidoDto } from './dto/criar-pedido.dto';
 import { ListarPedidosQueryDto } from './dto/listar-pedidos.query';
 import { TransicionarPedidoDto } from './dto/transicionar-pedido.dto';
 
+/** O que acompanha um pedido quando ele é devolvido completo (criação, detalhe, transição). */
+const INCLUIR_DETALHE = {
+    tipo: true,
+    historico: { orderBy: { criadoEm: 'asc' } },
+} as const;
+
 @Injectable()
 export class PedidosService {
     constructor(private readonly prisma: PrismaService) { }
@@ -29,7 +34,7 @@ export class PedidosService {
 
         const ano = anoAtualBrasil();
 
-        return this.prisma.$transaction(
+        const pedido = await this.prisma.$transaction(
             async (tx) => {
                 const sequencial = await this.proximoSequencial(tx, ano);
 
@@ -47,11 +52,67 @@ export class PedidosService {
                             create: { statusOrigem: null, statusDestino: StatusPedido.PROTOCOLADO },
                         },
                     },
-                    include: { tipo: true, historico: true },
+                    include: INCLUIR_DETALHE,
                 });
             },
             { maxWait: 5_000, timeout: 10_000 },
         );
+
+        return this.comTransicoesPermitidas(pedido);
+    }
+
+    async listar(query: ListarPedidosQueryDto) {
+        const { status, tipoId, busca, pagina, porPagina } = query;
+
+        const where: Prisma.PedidoWhereInput = {};
+
+        if (status) {
+            where.status = status;
+        }
+
+        if (tipoId) {
+            where.tipoId = tipoId;
+        }
+
+        const termo = busca?.trim();
+        if (termo) {
+            where.OR = [
+                { numeroProtocolo: { contains: termo, mode: 'insensitive' } },
+                { solicitanteNome: { contains: termo, mode: 'insensitive' } },
+                { descricao: { contains: termo, mode: 'insensitive' } },
+            ];
+        }
+
+        const [itens, total] = await Promise.all([
+            this.prisma.pedido.findMany({
+                where,
+                include: { tipo: true },
+                orderBy: [{ ano: 'desc' }, { sequencial: 'desc' }],
+                skip: (pagina - 1) * porPagina,
+                take: porPagina,
+            }),
+            this.prisma.pedido.count({ where }),
+        ]);
+
+        return {
+            itens,
+            total,
+            pagina,
+            porPagina,
+            totalPaginas: Math.ceil(total / porPagina),
+        };
+    }
+
+    async buscarPorId(id: string) {
+        const pedido = await this.prisma.pedido.findUnique({
+            where: { id },
+            include: INCLUIR_DETALHE,
+        });
+        if (!pedido) {
+            throw new NotFoundException(`Pedido ${id} não encontrado`);
+        }
+
+        return this.comTransicoesPermitidas(pedido);
     }
 
     async transicionar(id: string, dto: TransicionarPedidoDto) {
@@ -85,22 +146,13 @@ export class PedidosService {
                 },
             });
 
-            return tx.pedido.findUniqueOrThrow({
+            const atualizado = await tx.pedido.findUniqueOrThrow({
                 where: { id },
-                include: {
-                    tipo: true,
-                    historico: { orderBy: { criadoEm: 'asc' } },
-                },
+                include: INCLUIR_DETALHE,
             });
+
+            return this.comTransicoesPermitidas(atualizado);
         });
-    }
-
-    listar(query: ListarPedidosQueryDto) {
-        throw new NotImplementedException('Implementado na etapa 5');
-    }
-
-    buscarPorId(id: string) {
-        throw new NotImplementedException('Implementado na etapa 6');
     }
 
     /**
@@ -139,5 +191,14 @@ export class PedidosService {
             }
             throw erro;
         }
+    }
+
+    /**
+     * Acrescenta ao pedido a lista de próximos status possíveis.
+     * O frontend usa essa lista para mostrar só os botões válidos,
+     * sem precisar conhecer a regra da máquina de estados.
+     */
+    private comTransicoesPermitidas<T extends { status: StatusPedido }>(pedido: T) {
+        return { ...pedido, transicoesPermitidas: transicoesPermitidas(pedido.status) };
     }
 }
